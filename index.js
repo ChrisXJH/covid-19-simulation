@@ -1,4 +1,5 @@
-const INFECT_CHANCE = 0.4;
+const INFECT_CHANCE = 0.0005;
+const MAX_SPEED = 3;
 
 class Board {
   constructor(width, height) {
@@ -36,6 +37,7 @@ class Board {
   }
 
   movePerson(person, newX, newY) {
+    if (this.isOccupied(newX, newY)) return;
     this.grid[person.x][person.y] = null;
     this.grid[newX][newY] = person;
     person.x = newX;
@@ -43,12 +45,16 @@ class Board {
   }
 
   print() {
-    const output = this.grid.map(row =>
-      row.map(person => {
-        if (!person) return ' ';
-        return person.infected ? '*' : '0';
-      })
-    );
+    const output = this.grid
+      .map(row =>
+        row
+          .map(person => {
+            if (!person) return ' ';
+            return person.infected ? '*' : '.';
+          })
+          .join('')
+      )
+      .join('|\n');
     console.log('\n\n\n\n');
     console.log(output);
   }
@@ -60,46 +66,52 @@ class Person {
     this.board = board;
     this.x = x;
     this.y = y;
+    this.dx = 0;
+    this.dy = 0;
     this.infected = false;
 
     this.board.movePerson(this, this.x, this.y);
   }
 
   randomMove() {
-    let newX, newY;
+    this.dx += Math.floor(Math.random() * 3) - 1;
+    this.dy += Math.floor(Math.random() * 3) - 1;
 
-    do {
-      const dx = Math.floor(Math.random() * 3) - 1;
-      const dy = Math.floor(Math.random() * 3) - 1;
+    const sx = Math.abs(this.dx);
+    const sy = Math.abs(this.dy);
+    const ux = this.dx / sx;
+    const uy = this.dy / sy;
 
-      newX = this.x + dx;
-      newY = this.y + dy;
-    } while (this.board.isOccupied(newX, newY));
+    this.dx = sx > MAX_SPEED ? ux * MAX_SPEED : this.dx;
+    this.dy = sy > MAX_SPEED ? uy * MAX_SPEED : this.dy;
+
+    const newX = this.x + this.dx;
+    const newY = this.y + this.dy;
 
     this.board.movePerson(this, newX, newY);
   }
 
-  checkInfection() {
-    if (this.infected) return;
+  infect() {
+    if (!this.infected) return;
     const neighbors = this.board.getNeighbors(this);
-    const shouldInfect =
-      Math.random() <= INFECT_CHANCE && neighbors.some(p => p.infected);
-    this.infected = shouldInfect;
+    neighbors.forEach(neighbor => {
+      if (Math.random() <= INFECT_CHANCE) neighbor.infected = true;
+    });
   }
 
   update() {
     this.randomMove();
-    this.checkInfection();
+    this.infect();
   }
 }
 
 function main() {
-  const numPersons = 20;
-  const w = 10;
-  const h = 10;
+  const numPersons = 500;
+  const w = 50;
+  const h = 100;
 
   const times = 10000;
-  const interval = 200;
+  const interval = 100;
   const board = new Board(w, h);
   const persons = new Array(numPersons);
 
@@ -114,14 +126,23 @@ function main() {
     persons[i] = new Person(i, board, initX, initY);
   }
 
+  const stats = [];
+
   let count = 0;
 
   const intv = setInterval(() => {
+    let infections = 0;
     for (let person of persons) {
       person.update();
+      if (person.infected) {
+        ++infections;
+      }
     }
 
+    stats.push({ t: count, y: infections });
+
     board.print();
+    console.log('Infected:', infections);
 
     ++count;
     if (count === times) clearInterval(intv);
@@ -129,3 +150,5 @@ function main() {
 
   persons[0].infected = true;
 }
+
+main();
