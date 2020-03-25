@@ -8,4 +8,6 @@ Simple simulation of the spread of COVID-19 given that no precautions is taken.
 ## Run
 `node index.js`
 
+## Demo
+
 ![](demo.gif)
