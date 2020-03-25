@@ -1,5 +1,10 @@
-const INFECT_CHANCE = 0.0005;
-const MAX_SPEED = 3;
+const FPS = 20;
+const INFECT_CHANCE = 0.9;
+const MOBILITY = 1;
+const RADIUS = 2;
+const FATALITY_RATE = 0.03;
+const SURVIVAL_TIME = 10;
+const RECOVERY_TIME = 20;
 
 class Board {
   constructor(width, height) {
@@ -11,7 +16,7 @@ class Board {
   }
 
   isValidPosition(x, y) {
-    return x > 0 && x < this.width && y > 0 && y < this.height;
+    return x >= 0 && x < this.width && y >= 0 && y < this.height;
   }
 
   isOccupied(x, y) {
@@ -24,12 +29,14 @@ class Board {
     const { x, y } = person;
     const results = [];
 
-    for (let newX = x - 1; newX <= x + 1; ++newX) {
-      for (let newY = y - 1; newY <= x + 1; ++newY) {
-        if ((newX === x && newY === y) || !this.isValidPosition(newX, newY))
-          continue;
+    for (let r = 1; r <= RADIUS; ++r) {
+      for (let newX = x - r; newX <= x + r; ++newX) {
+        for (let newY = y - r; newY <= y + r; ++newY) {
+          if ((newX === x && newY === y) || !this.isValidPosition(newX, newY))
+            continue;
 
-        this.grid[newX][newY] && results.push(this.grid[newX][newY]);
+          this.grid[newX][newY] && results.push(this.grid[newX][newY]);
+        }
       }
     }
 
@@ -46,19 +53,30 @@ class Board {
 
   print() {
     const output = this.grid
-      .map(row =>
-        row
-          .map(person => {
-            if (!person) return ' ';
-            return person.infected ? '*' : '.';
-          })
-          .join('')
+      .map(
+        row =>
+          row
+            .map(person => {
+              if (!person) return ' ';
+              if (person.dead) return 'X';
+              if (person.infected) return '*';
+
+              return '.';
+            })
+            .join('') + '|'
       )
-      .join('|\n');
+      .join('\n');
     console.log('\n\n\n\n');
     console.log(output);
   }
 }
+
+const PersonStatuses = {
+  ALIVE: 'ALIVE',
+  INFECTED: 'INFECTED',
+  RECOVERED: 'RECOVERED',
+  DEAD: 'DEAD'
+};
 
 class Person {
   constructor(id, board, x, y) {
@@ -68,9 +86,26 @@ class Person {
     this.y = y;
     this.dx = 0;
     this.dy = 0;
-    this.infected = false;
+    this.status = PersonStatuses.ALIVE;
+    this.infectedTime;
 
     this.board.movePerson(this, this.x, this.y);
+  }
+
+  get alive() {
+    return this.status === PersonStatuses.ALIVE;
+  }
+
+  get infected() {
+    return this.status === PersonStatuses.INFECTED;
+  }
+
+  get recovered() {
+    return this.status === PersonStatuses.RECOVERED;
+  }
+
+  get dead() {
+    return this.status === PersonStatuses.DEAD;
   }
 
   randomMove() {
@@ -82,8 +117,8 @@ class Person {
     const ux = this.dx / sx;
     const uy = this.dy / sy;
 
-    this.dx = sx > MAX_SPEED ? ux * MAX_SPEED : this.dx;
-    this.dy = sy > MAX_SPEED ? uy * MAX_SPEED : this.dy;
+    this.dx = sx > MOBILITY ? ux * MOBILITY : this.dx;
+    this.dy = sy > MOBILITY ? uy * MOBILITY : this.dy;
 
     const newX = this.x + this.dx;
     const newY = this.y + this.dy;
@@ -91,27 +126,44 @@ class Person {
     this.board.movePerson(this, newX, newY);
   }
 
-  infect() {
+  infect(time) {
+    if (this.dead || this.recovered) return;
+    this.infectedTime = time;
+    this.status = PersonStatuses.INFECTED;
+  }
+
+  infectNeighbors(time) {
     if (!this.infected) return;
     const neighbors = this.board.getNeighbors(this);
     neighbors.forEach(neighbor => {
-      if (Math.random() <= INFECT_CHANCE) neighbor.infected = true;
+      if (Math.random() <= INFECT_CHANCE) neighbor.infect(time);
     });
   }
 
-  update() {
+  update(time) {
+    if (this.dead) return;
+    if (
+      Math.random() <= FATALITY_RATE &&
+      this.infected &&
+      time === this.infectedTime + SURVIVAL_TIME
+    ) {
+      this.status = PersonStatuses.DEAD;
+      return;
+    }
+
+    if (this.infected && time >= this.infectedTime + RECOVERY_TIME)
+      this.status = PersonStatuses.RECOVERED;
+
     this.randomMove();
-    this.infect();
+    this.infectNeighbors(time);
   }
 }
 
 function main() {
-  const numPersons = 500;
+  const numPersons = 150;
   const w = 50;
   const h = 100;
 
-  const times = 10000;
-  const interval = 100;
   const board = new Board(w, h);
   const persons = new Array(numPersons);
 
@@ -130,25 +182,36 @@ function main() {
 
   let count = 0;
 
-  const intv = setInterval(() => {
-    let infections = 0;
-    for (let person of persons) {
-      person.update();
-      if (person.infected) {
-        ++infections;
-      }
-    }
+  setInterval(() => {
+    persons.forEach(person => {
+      person.update(count);
+    });
 
-    stats.push({ t: count, y: infections });
+    const data = persons.reduce(
+      (prev, curr) => ({
+        infections:
+          prev.infections +
+          (curr.infected || curr.recovered || curr.dead ? 1 : 0),
+        exiting: prev.exiting + (curr.infected ? 1 : 0),
+        deaths: prev.deaths + (curr.dead ? 1 : 0),
+        recoveries: prev.recoveries + (curr.recovered ? 1 : 0)
+      }),
+      { infections: 0, exiting: 0, deaths: 0, recoveries: 0 }
+    );
+
+    stats.push({ t: count, data });
 
     board.print();
-    console.log('Infected:', infections);
+    console.log();
+    console.log('Infections:', `${data.infections}/${numPersons}`);
+    console.log('Existing:', data.exiting);
+    console.log('Recoveries:', `${data.recoveries}/${data.infections}`);
+    console.log('Deaths:', `${data.deaths}/${data.infections}`);
 
     ++count;
-    if (count === times) clearInterval(intv);
-  }, interval);
+  }, 1000 / FPS);
 
-  persons[0].infected = true;
+  persons[0].infect(0);
 }
 
 main();
