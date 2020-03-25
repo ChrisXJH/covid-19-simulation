@@ -10,4 +10,8 @@ Simple simulation of the spread of COVID-19 given that no precautions is taken.
 
 ## Demo
 
+- healthy person: "."
+- infected person: "*"
+- death: "X"
+
 ![](demo.gif)
