@@ -1,5 +1,5 @@
 const FPS = 20;
-const INFECT_CHANCE = 0.9;
+const INFECT_CHANCE = 0.5;
 const MOBILITY = 1;
 const RADIUS = 2;
 const FATALITY_RATE = 0.03;
